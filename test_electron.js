@@ -1,0 +1,1 @@
+console.log('electron:', process.versions.electron, 'node:', process.versions.node);
