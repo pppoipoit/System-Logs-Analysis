@@ -14,14 +14,16 @@ let state = {
 // ── Model Lists ────────────────────────────────────────────────────────────
 const MODELS = {
   gemini: [
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (แนะนำ - เร็วและประหยัด)' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (วิเคราะห์ลึก)' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (รุ่นใหม่ล่าสุด)' },
+    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (แนะนำ - เร็วและประหยัด)' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (สมดุล)' },
+    { value: 'gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-2.0-flash-lite-001', label: 'Gemini 2.0 Flash Lite' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (รุ่นเก่า)' },
   ],
   claude: [
-    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-    { value: 'claude-haiku-3-5-20241022', label: 'Claude Haiku 3.5 (เร็วสุด)' },
-    { value: 'claude-opus-4-20250514', label: 'Claude Opus 4 (ดีสุด)' },
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (เร็ว)' },
   ],
   openai: [
     { value: 'gpt-4o', label: 'GPT-4o (แนะนำ)' },

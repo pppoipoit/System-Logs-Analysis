@@ -1,18 +1,72 @@
 {
   "name": "syslog-ai",
   "version": "1.0.0",
-  "description": "AI-Powered Windows System Log Analyzer",
+  "description": "AI-Powered Windows System Log Analyzer — วิเคราะห์ปัญหาระบบ Windows ด้วย AI (Gemini, Claude, GPT, etc.)",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "dist": "electron-builder build --win --x64",
+    "dist:portable": "electron-builder build --win --x64 --config.win.target=portable",
+    "postinstall": "electron-builder install-app-deps"
   },
-  "author": "",
+  "author": "pppoipoit",
   "license": "MIT",
   "allowScripts": {
-    "electron@33.4.11": true
+    "electron@33.4.11": true,
+    "electron-builder@*": true,
+    "app-builder-lib@*": true,
+    "dmg-builder@*": true
+  },
+  "build": {
+    "appId": "com.syslog-ai.app",
+    "productName": "SysLog AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "preload.js",
+      "index.html",
+      "styles.css",
+      "package.json",
+      "src/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "src/collector/",
+        "to": "src/collector/",
+        "filter": [
+          "*.ps1"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": null,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SysLog AI",
+      "uninstallDisplayName": "SysLog AI — Windows System Log Analyzer",
+      "language": "1046"
+    }
   },
   "dependencies": {
     "electron": "^33.4.11"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.1.8"
   }
 }

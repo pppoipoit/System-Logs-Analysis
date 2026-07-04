@@ -1,4 +1,5 @@
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Continue"
+$WarningPreference = "SilentlyContinue"
 
 # Helper function to get event logs safely
 function Get-Events {
@@ -8,7 +9,6 @@ function Get-Events {
         [int]$MaxEvents = 20
     )
     try {
-        # Level: 1=Critical, 2=Error, 3=Warning
         $events = Get-WinEvent -FilterHashtable @{LogName=$LogName; Level=$Level; StartTime=(Get-Date).AddDays(-7)} -MaxEvents $MaxEvents -ErrorAction Stop
         
         $events | Select-Object `
@@ -23,40 +23,95 @@ function Get-Events {
 }
 
 $output = @{}
+$debug = @()
 
 # 1. System Info
 try {
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cs = Get-CimInstance Win32_ComputerSystem
-    $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+    # Try CIM first (requires admin on some systems), fallback to WMI
+    $os = $null
+    $cs = $null
+    $cpu = $null
+    
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+    } catch {
+        $debug += "CIM OS failed: $_"
+        $os = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
+    }
+    
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+    } catch {
+        $debug += "CIM CS failed: $_"
+        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+    }
+    
+    try {
+        $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
+    } catch {
+        $debug += "CIM CPU failed: $_"
+        $cpu = Get-WmiObject Win32_Processor -ErrorAction Stop | Select-Object -First 1
+    }
+
+    $ramTotal = if ($cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 1) } else { 0 }
+    $ramFree = if ($os.FreePhysicalMemory) { [math]::Round($os.FreePhysicalMemory / 1MB, 1) } else { 0 }
+    $ramFreePct = if ($os.FreePhysicalMemory -and $cs.TotalPhysicalMemory -and $cs.TotalPhysicalMemory -gt 0) { [math]::Round(($os.FreePhysicalMemory * 1024KB) / $cs.TotalPhysicalMemory * 100, 1) } else { 0 }
+    $lastBoot = if ($os.LastBootUpTime) { $os.LastBootUpTime.ToString('s') } else { "" }
+    $uptime = if ($os.LastBootUpTime) { [math]::Round((New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalHours, 1) } else { 0 }
 
     $output.systemInfo = @{
         computerName = $env:COMPUTERNAME
-        os = $os.Caption
-        osBuild = $os.BuildNumber
-        cpu = if ($cpu) { $cpu.Name.Trim() } else { "Unknown" }
-        ramGB = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 1) } else { 0 }
-        freeRamGB = if ($os) { [math]::Round($os.FreePhysicalMemory / 1MB, 1) } else { 0 }
-        freeRamPct = if ($os -and $cs -and $cs.TotalPhysicalMemory -gt 0) { [math]::Round(($os.FreePhysicalMemory * 1024) / $cs.TotalPhysicalMemory * 100, 1) } else { 0 }
-        lastBoot = if ($os) { $os.LastBootUpTime.ToString('s') } else { "" }
-        uptime = if ($os) { [math]::Round((New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalHours, 1) } else { 0 }
+        os = if ($os.Caption) { $os.Caption } else { "Windows" }
+        osBuild = if ($os.BuildNumber) { $os.BuildNumber } else { "" }
+        cpu = if ($cpu -and $cpu.Name) { $cpu.Name.Trim() } else { "Unknown" }
+        ramGB = $ramTotal
+        freeRamGB = $ramFree
+        freeRamPct = $ramFreePct
+        lastBoot = $lastBoot
+        uptime = $uptime
     }
 } catch {
-    $output.systemInfo = @{}
+    $debug += "SystemInfo failed: $_"
+    $output.systemInfo = @{
+        computerName = $env:COMPUTERNAME
+        os = "Windows"
+        osBuild = ""
+        cpu = "Unknown"
+        ramGB = 0
+        freeRamGB = 0
+        freeRamPct = 0
+        lastBoot = ""
+        uptime = 0
+    }
 }
 
 # 2. Disk Info
 try {
-    $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
-    $output.diskInfo = foreach ($d in $disks) {
-        @{
-            drive = $d.DeviceID
-            freeGB = [math]::Round($d.FreeSpace / 1GB, 1)
-            totalGB = [math]::Round($d.Size / 1GB, 1)
-            usedPercent = [math]::Round(($d.Size - $d.FreeSpace) / $d.Size * 100, 1)
+    $disks = $null
+    try {
+        $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+    } catch {
+        $debug += "CIM Disk failed: $_"
+        $disks = Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+    }
+    
+    $output.diskInfo = if ($disks) {
+        foreach ($d in $disks) {
+            $total = if ($d.Size -and $d.Size -gt 0) { [math]::Round($d.Size / 1GB, 1) } else { 0 }
+            $free = if ($d.FreeSpace) { [math]::Round($d.FreeSpace / 1GB, 1) } else { 0 }
+            $usedPct = if ($d.Size -and $d.FreeSpace -and $d.Size -gt 0) { [math]::Round(($d.Size - $d.FreeSpace) / $d.Size * 100, 1) } else { 0 }
+            @{
+                drive = $d.DeviceID
+                freeGB = $free
+                totalGB = $total
+                usedPercent = $usedPct
+            }
         }
+    } else {
+        @()
     }
 } catch {
+    $debug += "DiskInfo failed: $_"
     $output.diskInfo = @()
 }
 
@@ -74,6 +129,7 @@ try {
         } else { @() }
     }
 } catch {
+    $debug += "CrashDumps failed: $_"
     $output.crashDumps = @{ count = 0; recent = @() }
 }
 
@@ -92,6 +148,7 @@ try {
         }
     }
 } catch {
+    $debug += "Updates failed: $_"
     $output.recentUpdates = @()
 }
 
@@ -128,7 +185,13 @@ try {
         }
     }
 } catch {
+    $debug += "Processes failed: $_"
     $output.topProcesses = @()
+}
+
+# Add debug info if any errors occurred
+if ($debug.Count -gt 0) {
+    $output._debug = $debug -join ' | '
 }
 
 # Output as JSON
