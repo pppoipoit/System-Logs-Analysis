@@ -55,7 +55,9 @@ try {
 
     $ramTotal = if ($cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 1) } else { 0 }
     $ramFree = if ($os.FreePhysicalMemory) { [math]::Round($os.FreePhysicalMemory / 1MB, 1) } else { 0 }
-    $ramFreePct = if ($os.FreePhysicalMemory -and $cs.TotalPhysicalMemory -and $cs.TotalPhysicalMemory -gt 0) { [math]::Round(($os.FreePhysicalMemory * 1024KB) / $cs.TotalPhysicalMemory * 100, 1) } else { 0 }
+    # Fix: FreePhysicalMemory is in KB, TotalPhysicalMemory is in bytes
+    # Use 1KB (1024) to convert KB to bytes, not 1024KB (1048576)
+    $ramFreePct = if ($os.FreePhysicalMemory -and $cs.TotalPhysicalMemory -and $cs.TotalPhysicalMemory -gt 0) { [math]::Round(($os.FreePhysicalMemory * 1KB) / $cs.TotalPhysicalMemory * 100, 1) } else { 0 }
     $lastBoot = if ($os.LastBootUpTime) { $os.LastBootUpTime.ToString('s') } else { "" }
     $uptime = if ($os.LastBootUpTime) { [math]::Round((New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalHours, 1) } else { 0 }
 
@@ -122,11 +124,12 @@ try {
     
     $output.crashDumps = @{
         count = if ($dumps) { @($dumps).Count } else { 0 }
-        recent = if ($dumps) { 
-            @($dumps | Sort-Object LastWriteTime -Descending | Select-Object -First 3 | Select-Object `
+        # Fix: ensure recent is always an array, even when empty
+        recent = @(if ($dumps) { 
+            $dumps | Sort-Object LastWriteTime -Descending | Select-Object -First 3 | Select-Object `
                 Name, 
-                @{Name='Date'; Expression={$_.LastWriteTime.ToString('s')}})
-        } else { @() }
+                @{Name='Date'; Expression={$_.LastWriteTime.ToString('s')}}
+        })
     }
 } catch {
     $debug += "CrashDumps failed: $_"
