@@ -29,6 +29,18 @@ function saveSettings(settings) {
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
 }
 
+// ─── Window Icon (SVG → nativeImage) ──────────────────────────────────────────
+function createAppIcon(size = 32) {
+  // SysLog AI logo as SVG wrapped in a data URL for Electron nativeImage
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" stroke="#7C3AED" stroke-width="2"/>
+    <circle cx="12" cy="12" r="3" fill="#7C3AED"/>
+    <path d="M8 12h8M12 8v8" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+  </svg>`
+  const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+  return require('electron').nativeImage.createFromDataURL(dataUrl)
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   const win = new BrowserWindow({
@@ -37,6 +49,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#0A0E1A',
+    icon: createAppIcon(32),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -186,7 +199,11 @@ ipcMain.handle('export-logs', async (_, logsData) => {
 
 // ─── IPC: Collect Logs ───────────────────────────────────────────────────────
 ipcMain.handle('collect-logs', async (event) => {
-  const scriptPath = path.join(__dirname, 'src', 'collector', 'logCollector.ps1')
+  // When packaged (built with electron-builder), __dirname is inside app.asar
+  // but the .ps1 file is in extraResources (outside asar). Use process.resourcesPath.
+  const scriptPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'src', 'collector', 'logCollector.ps1')
+    : path.join(__dirname, 'src', 'collector', 'logCollector.ps1')
 
   return new Promise((resolve) => {
     const ps = spawn('powershell.exe', [
