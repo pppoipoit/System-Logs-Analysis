@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const { spawn } = require('child_process')
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -72,6 +73,8 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 
 // ─── IPC: Settings ────────────────────────────────────────────────────────────
 ipcMain.handle('get-settings', () => getSettings())
+
+ipcMain.handle('get-platform', () => process.platform)
 
 ipcMain.handle('save-settings', (_, settings) => {
   saveSettings(settings)
@@ -199,69 +202,106 @@ ipcMain.handle('export-logs', async (_, logsData) => {
 
 // ─── IPC: Collect Logs ───────────────────────────────────────────────────────
 ipcMain.handle('collect-logs', async (event) => {
-  // When packaged (built with electron-builder), __dirname is inside app.asar
-  // but the .ps1 file is in extraResources (outside asar). Use process.resourcesPath.
-  const scriptPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'src', 'collector', 'logCollector.ps1')
-    : path.join(__dirname, 'src', 'collector', 'logCollector.ps1')
+  const platform = process.platform
 
-  return new Promise((resolve) => {
-    const ps = spawn('powershell.exe', [
-      '-ExecutionPolicy', 'Bypass',
-      '-NoProfile',
-      '-NonInteractive',
-      '-File', scriptPath
-    ])
-
-    let out = ''
-    let err = ''
-
-    ps.stdout.on('data', d => { out += d.toString() })
-    ps.stderr.on('data', d => { err += d.toString() })
-
-    ps.on('close', () => {
-      try {
-        // Find the JSON object in output (skip any progress/warning messages)
-        // Use indexOf on a unique JSON key instead of lastIndexOf('{') because
-        // event messages contain {GUID}s that confuse lastIndexOf
-        const jsonStart = out.indexOf('{"crashDumps"')
-        const jsonStr = jsonStart >= 0 ? out.slice(jsonStart) : out
-        const parsed = JSON.parse(jsonStr)
-        
-        // If there was stderr output, include it in debug log
-        if (err.trim()) {
-          console.log('[PowerShell stderr]', err.trim())
-        }
-        
-        resolve(parsed)
-      } catch (e) {
-        console.error('[PowerShell parse error] stdout:', out.slice(0, 500), 'stderr:', err.slice(0, 500))
-        resolve({
-          error: 'Could not parse log output',
-          systemInfo: {
-            computerName: process.env.COMPUTERNAME || 'Unknown',
-            os: 'Windows',
-            cpu: 'Unknown',
-            ramGB: 0,
-            freeRamGB: 0,
-            uptime: 0
-          },
-          systemEvents: [],
-          appEvents: [],
-          recentUpdates: [],
-          networkEvents: [],
-          driverEvents: [],
-          diskInfo: [],
-          crashDumps: { count: 0, recent: [] },
-          topProcesses: []
-        })
+  // macOS: run the Node collector directly (no separate process / no node-binary hunt).
+  // macCollector.js lives inside the app (asar) and exports collectMacLogs().
+  if (platform === 'darwin') {
+    try {
+      const { collectMacLogs } = require('./src/collector/macCollector.js')
+      return await collectMacLogs()
+    } catch (e) {
+      console.error('[macCollector error]', e)
+      return {
+        error: 'macCollector failed: ' + e.message,
+        systemInfo: {
+          computerName: os.hostname(),
+          os: 'macOS',
+          cpu: 'Unknown',
+          ramGB: 0,
+          freeRamGB: 0,
+          freeRamPct: 0,
+          lastBoot: '',
+          uptime: 0
+        },
+        systemEvents: [],
+        appEvents: [],
+        recentUpdates: [],
+        networkEvents: [],
+        driverEvents: [],
+        diskInfo: [],
+        crashDumps: { count: 0, recent: [] },
+        topProcesses: []
       }
-    })
+    }
+  }
 
-    ps.on('error', () => {
-      resolve({ error: 'PowerShell not available', systemInfo: {}, systemEvents: [] })
+  // Windows: spawn the PowerShell collector (lives in extraResources outside asar when packaged).
+  if (platform === 'win32') {
+    // When packaged (built with electron-builder), __dirname is inside app.asar
+    // but the .ps1 file is in extraResources (outside asar). Use process.resourcesPath.
+    const scriptPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'src', 'collector', 'logCollector.ps1')
+      : path.join(__dirname, 'src', 'collector', 'logCollector.ps1')
+
+    return new Promise((resolve) => {
+      const ps = spawn('powershell.exe', [
+        '-ExecutionPolicy', 'Bypass',
+        '-NoProfile',
+        '-NonInteractive',
+        '-File', scriptPath
+      ])
+
+      let out = ''
+      let err = ''
+
+      ps.stdout.on('data', d => { out += d.toString() })
+      ps.stderr.on('data', d => { err += d.toString() })
+
+      ps.on('close', () => {
+        try {
+          // Find the JSON object in output (skip any progress/warning messages)
+          // Use indexOf on a unique JSON key instead of lastIndexOf('{') because
+          // event messages contain {GUID}s that confuse lastIndexOf
+          const jsonStart = out.indexOf('{"crashDumps"')
+          const jsonStr = jsonStart >= 0 ? out.slice(jsonStart) : out
+          const parsed = JSON.parse(jsonStr)
+
+          resolve(parsed)
+        } catch (e) {
+          console.error('[PowerShell parse error] stdout:', out.slice(0, 500), 'stderr:', err.slice(0, 500))
+          resolve({
+            error: 'Could not parse log output',
+            systemInfo: {
+              computerName: process.env.COMPUTERNAME || os.hostname() || 'Unknown',
+              os: 'Windows',
+              cpu: 'Unknown',
+              ramGB: 0,
+              freeRamGB: 0,
+              freeRamPct: 0,
+              lastBoot: '',
+              uptime: 0
+            },
+            systemEvents: [],
+            appEvents: [],
+            recentUpdates: [],
+            networkEvents: [],
+            driverEvents: [],
+            diskInfo: [],
+            crashDumps: { count: 0, recent: [] },
+            topProcesses: []
+          })
+        }
+      })
+
+      ps.on('error', () => {
+        resolve({ error: 'PowerShell not available', systemInfo: {}, systemEvents: [] })
+      })
     })
-  })
+  }
+
+  // Other platforms (e.g. linux) are not supported yet.
+  return { error: 'Unsupported platform: ' + platform, systemInfo: {}, systemEvents: [] }
 })
 
 // ─── IPC: Analyze Logs ───────────────────────────────────────────────────────
@@ -293,11 +333,15 @@ function buildPrompt(logs, settings) {
   const truncate = (arr, n) => arr ? arr.slice(0, n) : []
   const isOllama = settings && settings.aiProvider === 'ollama'
 
-  let persona = "You are an expert Windows system diagnostic engineer. You MUST reply in THAI language (ภาษาไทย) for all text fields."
+  // Persona is platform-aware so the AI analyses the correct OS context
+  // (Windows vs macOS) instead of assuming Windows every time.
+  const osName = process.platform === 'darwin' ? 'macOS' : 'Windows'
+
+  let persona = `You are an expert ${osName} system diagnostic engineer. You MUST reply in THAI language (ภาษาไทย) for all text fields.`
   let jsonInstruction = "Respond ONLY with a valid JSON object (no markdown, no explanation outside JSON)."
 
   if (settings && settings.tsundereMode) {
-    persona = `You are a highly skilled but extremely Tsundere Windows system diagnostic engineer. 
+    persona = `You are a highly skilled but extremely Tsundere ${osName} system diagnostic engineer. 
 You are annoyed that the user keeps breaking their computer and asking for your help, but you still give them excellent advice because you secretly care. 
 Use a heavy Tsundere tone in your 'summary', 'explanation', and 'recommendations' fields. Use Thai language in a classic anime tsundere style (like Gemini's tsundere persona). 
 Example tone: "นี่นายไปทำอะไรมาอีกเนี่ย! เครื่องถึงได้พังเละเทะขนาดนี้... ชิ! เห็นแก่ที่นายมาขอร้องหรอกนะ ฉันจะบอกวิธีแก้ให้ก็ได้ ทำตามที่บอกเป๊ะๆ ล่ะ ย่ะ!" หรือ "ไม่ได้เป็นห่วงหรอกนะ แค่ทนดูคนใช้คอมไม่เป็นไม่ได้แค่นั้นแหละ!"`
@@ -321,7 +365,7 @@ ${JSON.stringify(truncate(logs.systemEvents, 40), null, 2)}
 APP EVENTS:
 ${JSON.stringify(truncate(logs.appEvents, 20), null, 2)}
 
-RECENT WINDOWS UPDATES:
+RECENT ${osName.toUpperCase()} UPDATES:
 ${JSON.stringify(logs.recentUpdates, null, 2)}
 
 NETWORK EVENTS:

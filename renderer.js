@@ -8,7 +8,9 @@ let state = {
   lastLogs: null,
   lastResults: null,
   history: [],
-  currentFilter: 'all'
+  currentFilter: 'all',
+  platform: 'win32',
+  tips: getTips('win32')
 }
 
 // ── Model Lists ────────────────────────────────────────────────────────────
@@ -50,18 +52,27 @@ const API_KEY_LINKS = {
   qwen: 'https://dashscope.aliyuncs.com/',
 }
 
-const TIPS = [
-  'AI จะวิเคราะห์ correlation ระหว่าง events หลายจุดพร้อมกัน',
-  'Event logs จาก 7 วันล่าสุดถูกนำมาวิเคราะห์เพื่อหา pattern',
-  'AI สามารถตรวจจับความสัมพันธ์ระหว่าง Windows Update กับปัญหาที่เกิดขึ้น',
-  'ข้อมูล Driver และ Network events ช่วยระบุสาเหตุที่ซ่อนอยู่',
-  'Crash dump ให้ข้อมูลที่ละเอียดมากสำหรับการวิเคราะห์ BSOD',
-]
+// Tips are platform-aware: macOS uses "macOS System Update" / "Kernel Panic"
+// instead of the Windows-specific "Windows Update" / "BSOD".
+function getTips(platform) {
+  const isMac = platform === 'darwin'
+  const updateTerm = isMac ? 'macOS System Update' : 'Windows Update'
+  const crashTerm = isMac ? 'Kernel Panic' : 'BSOD'
+  return [
+    'AI จะวิเคราะห์ correlation ระหว่าง events หลายจุดพร้อมกัน',
+    'Event logs จาก 7 วันล่าสุดถูกนำมาวิเคราะห์เพื่อหา pattern',
+    `AI สามารถตรวจจับความสัมพันธ์ระหว่าง ${updateTerm} กับปัญหาที่เกิดขึ้น`,
+    'ข้อมูล Driver และ Network events ช่วยระบุสาเหตุที่ซ่อนอยู่',
+    `Crash dump ให้ข้อมูลที่ละเอียดมากสำหรับการวิเคราะห์ ${crashTerm}`,
+  ]
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   loadHistory()
   state.settings = await window.electronAPI.getSettings()
+  state.platform = await window.electronAPI.getPlatform()
+  state.tips = getTips(state.platform)
 
   if (state.settings.firstRun) {
     hideSidebar()
@@ -206,7 +217,7 @@ function rotateTips() {
     if (!document.getElementById('page-analyzing').classList.contains('active')) return
     el.style.opacity = '0'
     setTimeout(() => {
-      el.textContent = TIPS[i % TIPS.length]
+    el.textContent = state.tips[i % state.tips.length]
       el.style.opacity = '1'
       i++
     }, 300)

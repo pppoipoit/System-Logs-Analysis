@@ -6,7 +6,9 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "dist": "electron-builder build --win --x64",
+    "dist": "electron-builder build",
+    "dist:win": "electron-builder build --win --x64",
+    "dist:mac": "electron-builder build --mac",
     "dist:portable": "electron-builder build --win --x64 --config.win.target=portable"
   },
   "author": "pppoipoit",
@@ -32,15 +34,6 @@
       "package.json",
       "src/**/*"
     ],
-    "extraResources": [
-      {
-        "from": "src/collector/",
-        "to": "src/collector/",
-        "filter": [
-          "*.ps1"
-        ]
-      }
-    ],
     "win": {
       "target": [
         {
@@ -51,7 +44,30 @@
         }
       ],
       "icon": null,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "src/collector/",
+          "to": "src/collector/",
+          "filter": [
+            "*.ps1"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": null,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "portable": {
       "artifactName": "${productName}-Portable-${version}.${ext}"
