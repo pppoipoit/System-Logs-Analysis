@@ -23,21 +23,7 @@
   <aside class="sidebar" id="sidebar">
     <div class="logo">
       <div class="logo-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="url(#lg1)" stroke-width="2" />
-          <path d="M8 12h8M12 8v8" stroke="url(#lg2)" stroke-width="2" stroke-linecap="round" />
-          <circle cx="12" cy="12" r="3" fill="url(#lg1)" />
-          <defs>
-            <linearGradient id="lg1" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#7C3AED" />
-              <stop offset="1" stop-color="#3B82F6" />
-            </linearGradient>
-            <linearGradient id="lg2" x1="8" y1="8" x2="16" y2="16" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#7C3AED" />
-              <stop offset="1" stop-color="#3B82F6" />
-            </linearGradient>
-          </defs>
-        </svg>
+        <img src="src/assets/icon.ico" alt="SysLog AI" class="logo-img" draggable="false" />
       </div>
       <span class="logo-text">SysLog <span class="logo-ai">AI</span></span>
     </div>
@@ -72,6 +58,14 @@
             d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
         </svg>
         Settings
+      </button>
+      <button class="nav-item" data-page="import" id="nav-import">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        Import Log
       </button>
     </nav>
 
@@ -273,6 +267,54 @@
         </div>
       </div>
 
+      <!-- Hardware Sensor Widget (Universal: macOS + Windows) -->
+      <div class="sensor-widget">
+        <div class="section-header">
+          <h2 class="section-title">🌡️ Hardware Sensors</h2>
+          <span class="sensor-platform" id="sensor-platform"></span>
+        </div>
+        <div class="sensor-grid" id="sensor-grid">
+          <div class="sensor-cell">
+            <div class="sensor-label">CPU Temp</div>
+            <div class="sn-value neutral" id="sn-cpuTemp">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">GPU Temp</div>
+            <div class="sn-value neutral" id="sn-gpuTemp">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">Fan Speed</div>
+            <div class="sn-value neutral" id="sn-fanSpeed">N/A</div>
+          </div>
+          <div class="sensor-cell" id="cell-battery">
+            <div class="sensor-label">Battery Health</div>
+            <div class="sn-value neutral" id="sn-battery">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">CPU Load</div>
+            <div class="sn-value neutral" id="sn-load">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">CPU Cores</div>
+            <div class="sn-value neutral" id="sn-cpuCores">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">Motherboard</div>
+            <div class="sn-value neutral" id="sn-motherboard">N/A</div>
+          </div>
+          <div class="sensor-cell">
+            <div class="sensor-label">Chipset</div>
+            <div class="sn-value neutral" id="sn-chipset">N/A</div>
+          </div>
+        </div>
+        <div class="sensor-empty" id="sensor-empty" style="display:none">
+          <div class="empty-icon">🔌</div>
+          <div class="empty-title">ไม่สามารถอ่านเซนเซอร์ฮาร์ดแวร์ได้</div>
+          <div class="empty-desc">เซนเซอร์บางตัวอาจไม่รองรับบนเครื่องนี้ หรือไม่มีสิทธิ์เข้าถึง (ไม่ต้องขอ Admin/Root) — ข้อมูลจะแสดงเป็น "N/A"</div>
+        </div>
+        <div class="sensor-admin-note" id="sensor-admin-note" style="display:none"></div>
+      </div>
+
       <!-- Recent Issues -->
       <div class="dash-issues">
         <div class="section-header">
@@ -428,6 +470,68 @@
       </div>
     </section>
 
+    <!-- ── IMPORT LOG (Forensic / External) ── -->
+    <section class="page" id="page-import">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">🔍 Import & Analyze External Log</h1>
+          <p class="page-sub">โหมดนักสืบ — นำเข้า Log จากเครื่องอื่นเพื่อวิเคราะห์หาสาเหตุ</p>
+        </div>
+      </div>
+
+      <div class="import-banner">
+        <div class="import-banner-icon">⚠️</div>
+        <div class="import-banner-text">
+          <strong>External Log Analysis Mode</strong> — ระบบนี้ใช้สำหรับวิเคราะห์ Log จากเครื่องอื่น
+          ข้อมูลที่วิเคราะห์อาจมีความคลาดเคลื่อน ขึ้นอยู่กับความสมบูรณ์ของ Log ที่คุณส่งมา
+        </div>
+      </div>
+
+      <div class="import-card">
+        <div class="import-dropzone" id="import-dropzone" onclick="triggerImportFile()">
+          <div class="import-dropzone-icon">📂</div>
+          <div class="import-dropzone-title">คลิกเพื่อเลือกไฟล์ Log</div>
+          <div class="import-dropzone-desc">รองรับ .txt, .log, .csv, .dmp, .evtx, .json (สูงสุด 200 KB)</div>
+        </div>
+        <input type="file" id="import-file-input" style="display:none" accept=".txt,.log,.csv,.dmp,.evtx,.json" onchange="onImportFileSelected(event)">
+
+        <div class="import-file-info" id="import-file-info" style="display:none">
+          <div class="import-file-name" id="import-file-name"></div>
+          <div class="import-file-meta" id="import-file-meta"></div>
+          <button class="btn-secondary btn-sm" onclick="clearImportFile()">ล้างไฟล์</button>
+        </div>
+
+        <div class="import-sanitize-note" id="import-sanitize-note" style="display:none">
+          ✅ ข้อมูลส่วนบุคคล (Path, IP, Email, MAC) ถูกซ่อนออกก่อนส่ง AI แล้ว
+        </div>
+
+        <div class="import-actions">
+          <button class="btn-primary" id="import-analyze-btn" onclick="analyzeImportedLog()" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            วิเคราะห์ Log ด้วย AI
+          </button>
+        </div>
+      </div>
+
+      <div id="import-results" style="display:none">
+        <div class="import-results-header">
+          <h2 class="section-title">🕵️ Forensic Analysis Report</h2>
+          <span class="confidence-badge" id="import-confidence"></span>
+        </div>
+        <div class="import-summary" id="import-summary"></div>
+        <div id="import-issues-list"></div>
+        <div id="import-recommendations-section" style="display:none">
+          <div class="section-header">
+            <h2 class="section-title">💡 General Recommendations</h2>
+          </div>
+          <div class="recs-list" id="import-recs-list"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ── SETTINGS ── -->
     <section class="page" id="page-settings">
       <div class="page-header">
@@ -509,16 +613,21 @@
           <div class="sc-title">⚙️ Model &amp; API Key</div>
 
           <div id="settings-online-config">
-            <div class="form-group">
-              <label class="form-label">Model</label>
+            <div class="form-group" id="settings-model-group" style="display:none">
+              <label class="form-label">Model <span class="model-loading" id="settings-model-loading" style="display:none">⏳ กำลังโหลด...</span></label>
               <select class="form-select" id="settings-model" onchange="onModelChange()"></select>
             </div>
             <div class="form-group">
               <label class="form-label">API Key</label>
               <div class="input-row">
                 <input type="password" class="form-input" id="settings-apikey"
-                  placeholder="sk-... หรือ AIza... หรือ AQ..." autocomplete="off">
+                  placeholder="sk-... หรือ AIza... หรือ gsk_..." autocomplete="off"
+                  oninput="onApiKeyInput()">
                 <button class="btn-test" id="settings-test-btn" onclick="settingsTestKey()">Test</button>
+              </div>
+              <div id="settings-apikey-status" class="apikey-status" style="display:none">
+                <span class="apikey-status-icon" id="settings-apikey-icon"></span>
+                <span class="apikey-status-text" id="settings-apikey-text"></span>
               </div>
               <div id="settings-test-result" class="test-result" style="display:none"></div>
             </div>

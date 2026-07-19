@@ -1,6 +1,6 @@
 {
   "name": "syslog-ai",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "description": "AI-Powered Windows System Log Analyzer — วิเคราะห์ปัญหาระบบ Windows ด้วย AI (Gemini, Claude, GPT, etc.)",
   "main": "main.js",
   "scripts": {
@@ -43,24 +43,26 @@
           ]
         }
       ],
-      "icon": null,
+      "icon": "build/icon.ico",
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "extraResources": [
         {
+          "from": "build/icon.ico",
+          "to": "icon.ico"
+        },
+        {
           "from": "src/collector/",
-          "to": "src/collector/",
-          "filter": [
-            "*.ps1"
-          ]
+          "to": "src/collector/"
         }
-      ]
+      ],
+      "asar": false
     },
     "mac": {
       "target": [
         "dmg"
       ],
       "category": "public.app-category.utilities",
-      "icon": null,
+      "icon": "build/icon.ico",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -81,9 +83,8 @@
       "language": "1046"
     }
   },
-  "dependencies": {},
   "devDependencies": {
-    "electron": "^33.4.11",
+    "electron": "^43.1.1",
     "electron-builder": "^25.1.8"
   }
 }

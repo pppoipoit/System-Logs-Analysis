@@ -32,6 +32,19 @@ function num(v, d = 0) {
   return Number.isFinite(n) ? n : d
 }
 
+// Canonical sensorData schema — MUST match the Windows logCollector.ps1 output
+// EXACTLY (same keys, same null-on-unavailable semantics) so the renderer never
+// crashes. Every value is null when the sensor cannot be read without admin rights.
+function defaultSensorData() {
+  return {
+    cpuTemp: null,        // °C
+    gpuTemp: null,        // °C
+    fanSpeed: null,       // RPM
+    batteryHealth: null,  // number (%) or string e.g. "Good" | null
+    loadPercentage: null  // 0–100
+  }
+}
+
 async function collectMacLogs() {
   const debug = []
   const output = {}
@@ -204,6 +217,94 @@ async function collectMacLogs() {
       return { Name: name, RAM_MB: Math.round((rssKB / 1024) * 10) / 10 }
     })
   } catch (e) { debug.push('Processes failed: ' + e.message); output.topProcesses = [] }
+
+  // ── 9. Hardware Sensor Data (SMC) ─────────────────────────────────────────
+  // Best-effort only. Reads from AppleSMC / AppleSmartBattery / top.
+  // NEVER requires admin/root — any failure degrades to null so the app stays stable.
+  try {
+    // Pull the entire AppleSMC registry entry once (no admin needed for read).
+    const smc = sh('ioreg -r -n AppleSMC -w 0 2>/dev/null')
+
+    // Return the raw 16-bit value for an SMC key in either hex "<2d00>" or
+    // decimal "11520" form, depending on the macOS/ioreg version.
+    function smcRaw(key) {
+      const hex = smc.match(new RegExp('"' + key + '"\\s*=\\s*<([0-9a-fA-F]{2})([0-9a-fA-F]{2})>'))
+      if (hex) return ((parseInt(hex[1], 16) << 8) | parseInt(hex[2], 16))
+      const dec = smc.match(new RegExp('"' + key + '"\\s*=\\s*(\\d+)'))
+      if (dec) return parseInt(dec[1], 10)
+      return null
+    }
+    // SMC temperature keys are fixed-point °C * 256.
+    function smcTemp(key) {
+      const raw = smcRaw(key)
+      if (raw == null) return null
+      const c = raw / 256
+      return c > 0 && c < 150 ? Math.round(c * 10) / 10 : null
+    }
+
+    const cpuTemp = smcTemp('TC0P') || smcTemp('TC0D') || smcTemp('TC0C') || smcTemp('TC0H') || null
+    const gpuTemp = smcTemp('GC0P') || smcTemp('GC0D') || smcTemp('GP0P') || smcTemp('XG0P') || null
+
+    // Fan speed (RPM) — F0Ac = actual, F0Mn = min, F0Mx = max.
+    let fanSpeed = null
+    const fRaw = smcRaw('F0Ac')
+    if (fRaw != null && fRaw > 0 && fRaw < 10000) fanSpeed = fRaw
+
+    // CPU load % (non-admin): 100 - idle from a single `top` sample.
+    let loadPercentage = null
+    try {
+      const top = sh('top -l 1 -n 0 -stats cpu')
+      const idle = top.match(/(\d+(?:\.\d+)?)%\s+idle/i)
+      if (idle) loadPercentage = Math.round((100 - parseFloat(idle[1])) * 10) / 10
+    } catch {}
+
+    // Chassis detection: is a Mac a portable (MacBook) or a desktop
+    // (Macmini / MacStudio / iMac / MacPro)? Derived from the Model Identifier.
+    let isDesktop = false
+    try {
+      const modelId = sh('sysctl -n hw.model') || ''
+      // Portable Macs start with "MacBook"; everything else is a desktop form factor.
+      isDesktop = !/^MacBook/i.test(modelId)
+    } catch {}
+
+    // Battery health: MaxCapacity / DesignCapacity * 100.
+    // On desktop Macs there is no AppleSmartBattery — skip the query entirely
+    // so we never raise a spurious error for a genuine hardware limitation.
+    let batteryHealth = null
+    let hasBattery = false
+    if (!isDesktop) {
+      try {
+        const bat = sh('ioreg -r -n AppleSmartBattery -w 0 2>/dev/null')
+        const mc = (bat.match(/"MaxCapacity"\s*=\s*(\d+)/) || [])[1]
+        const dc = (bat.match(/"DesignCapacity"\s*=\s*(\d+)/) || [])[1]
+        if (mc && dc) {
+          hasBattery = true
+          const pct = Math.round((parseInt(mc, 10) / parseInt(dc, 10)) * 100)
+          batteryHealth = pct > 0 && pct <= 120 ? pct : null
+        }
+      } catch {}
+    }
+
+    output.sensorData = {
+      cpuTemp,
+      gpuTemp,
+      fanSpeed,
+      batteryHealth,
+      hasBattery,
+      isDesktop,
+      loadPercentage
+    }
+    output.sensorAvailability = {
+      cpuTemp: cpuTemp == null ? 'not_supported' : null,
+      gpuTemp: gpuTemp == null ? 'not_supported' : null,
+      fanSpeed: fanSpeed == null ? 'not_supported' : null,
+      loadPercentage: loadPercentage == null ? 'not_supported' : null
+    }
+  } catch (e) {
+    debug.push('SensorData failed: ' + e.message)
+    output.sensorData = defaultSensorData()
+    output.sensorAvailability = {}
+  }
 
   if (debug.length) output._debug = debug.join(' | ')
   return output
